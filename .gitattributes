@@ -1,0 +1,5 @@
+# Always LF, even when checked out or archived on Windows: the shell script,
+# Dockerfile and Caddyfile run on Linux, where CRLF breaks them ("$'\r': command not found").
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.pdf binary

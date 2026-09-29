@@ -11,4 +11,5 @@ models/
 tests/
 eval/
 scripts/
+deploy/
 *.md

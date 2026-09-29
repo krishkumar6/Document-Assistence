@@ -1,0 +1,8 @@
+# Caddy obtains a Let's Encrypt certificate for $DOMAIN automatically.
+# Streaming answers (text/event-stream) are flushed immediately by reverse_proxy.
+{$DOMAIN} {
+	reverse_proxy app:8000
+	request_body {
+		max_size 250MB  # 10 files x 20 MB per upload, plus headroom; the app enforces the real limits
+	}
+}
