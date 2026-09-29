@@ -1,0 +1,14 @@
+.venv/
+.git/
+.env
+.pytest_cache/
+__pycache__/
+**/__pycache__/
+chroma_db/
+data/
+logs/
+models/
+tests/
+eval/
+scripts/
+*.md

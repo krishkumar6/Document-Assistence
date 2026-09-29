@@ -1,0 +1,11 @@
+# Runtime dependencies, pinned to the versions the test suite passed with.
+anthropic==1.9.0          # Claude (only used when LLM_PROVIDER=anthropic)
+openai==3.20.0            # client for free OpenAI-compatible providers: Groq, Gemini, Ollama
+chromadb==1.5.9           # vector store + local MiniLM embeddings
+fastembed==0.8.1          # local cross-encoder reranker (ONNX, no PyTorch)
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32  # file uploads
+pypdf==6.19.0
+python-dotenv==1.2.3
+ddgs==9.16.0              # DuckDuckGo web search for the agent (free, no key)

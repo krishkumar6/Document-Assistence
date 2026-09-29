@@ -1,0 +1,23 @@
+# Render Blueprint (alternative to Railway). Standard (1 CPU / 2 GB) because the app
+# peaks at ~0.6 GB with the reranker, over the 512 MB plans; disks need a paid plan.
+services:
+  - name: document-assistant
+    type: web
+    runtime: docker
+    plan: 1c-2g
+    healthCheckPath: /health
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false   # entered in the Render dashboard, never committed
+      - key: APP_PASSWORD
+        sync: false
