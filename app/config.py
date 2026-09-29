@@ -21,6 +21,34 @@ else:  # local development layout
     CHROMA_DIR = Path(os.getenv("CHROMA_DIR", ROOT / "chroma_db"))
     LOG_DIR = Path(os.getenv("LOG_DIR", ROOT / "logs"))
 
+# Cap ONNX Runtime threads (embedder + reranker). On a tiny CPU share, like Render
+# free's 0.1 CPU, the default of one busy-waiting thread per visible core makes the
+# threads fight over the share; 1 thread without spinning is much faster there.
+ORT_THREADS = int(os.getenv("ORT_THREADS", 0))  # 0 = ONNX Runtime default
+
+
+def _limit_onnx_threads(n: int) -> None:
+    import onnxruntime as ort
+
+    base = ort.SessionOptions
+
+    class LimitedSessionOptions(base):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.intra_op_num_threads = n
+            self.inter_op_num_threads = 1
+            self.add_session_config_entry("session.intra_op.allow_spinning", "0")
+
+    # Chroma and fastembed both build sessions from onnxruntime.SessionOptions().
+    ort.SessionOptions = LimitedSessionOptions
+
+
+if ORT_THREADS > 0:
+    _limit_onnx_threads(ORT_THREADS)
+
+# Prebuilt index of the permanent library/ PDFs (made at image build, see app/seed.py).
+SEED_DIR = Path(os.getenv("SEED_DIR", ROOT / "seed"))
+
 # --- access and abuse limits (matter once deployed) ---
 # Password for the whole app (web page + API). Unset = open, which is refused on a
 # hosting platform unless ALLOW_PUBLIC=true, so a deploy is never accidentally public.

@@ -1,23 +1,34 @@
-# Render Blueprint (alternative to Railway). Standard (1 CPU / 2 GB) because the app
-# peaks at ~0.6 GB with the reranker, over the 512 MB plans; disks need a paid plan.
+# Render Blueprint: Dashboard → New → Blueprint → pick this repo.
+#
+# Free plan (512 MB RAM, 0.1 CPU, sleeps after 15 min idle, disk wiped on restart):
+#   - reranker off to fit in memory (hybrid vector + BM25 search stays on)
+#   - PDFs committed to library/ are built into the image and always available;
+#     PDFs uploaded on the page last only until the next restart
+#
+# To upgrade later (keeps uploads, turns the reranker back on): set plan to
+# `1c-2g`, add the disk block below, and set RETRIEVAL_RERANK to "true".
+#     disk:
+#       name: data
+#       mountPath: /data
+#       sizeGB: 1
 services:
   - name: document-assistant
     type: web
     runtime: docker
-    plan: 1c-2g
-    healthCheckPath: /health
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 1
+    healthCheckPath: /health
     envVars:
-      - key: DATA_DIR
-        value: /data
       - key: LLM_PROVIDER
         value: groq
       - key: GROQ_API_KEY
-        sync: false   # entered in the Render dashboard, never committed
+        sync: false          # entered in the dashboard when you create the Blueprint; never committed
       - key: APP_PASSWORD
-        sync: false
+        sync: false          # the password your users type to get in
+      - key: RETRIEVAL_RERANK
+        value: "false"       # the reranker needs ~140 MB more than the free plan's 512 MB allows
+      - key: MAX_UPLOAD_MB
+        value: "10"          # smaller uploads for the small free instance
+      - key: ORT_THREADS
+        value: "1"           # one model thread: ~4x faster searches on 0.1 CPU (measured 12s -> 3s)

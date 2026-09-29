@@ -1,5 +1,6 @@
 # Document Assistant: FastAPI app with local embeddings + reranker.
-# Works on Railway, Render or any Docker host. Needs ~0.6 GB RAM at peak.
+# Works on Render (see render.yaml) or any Docker host. Needs ~0.6 GB RAM at peak
+# with the reranker, well under 512 MB without it (RETRIEVAL_RERANK=false).
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -21,6 +22,12 @@ RUN python -c "from chromadb.utils.embedding_functions import DefaultEmbeddingFu
  && python -c "from fastembed.rerank.cross_encoder import TextCrossEncoder as T; list(T('Xenova/ms-marco-MiniLM-L-6-v2', cache_dir='/opt/models').rerank('q', ['d']))"
 
 COPY app ./app
+
+# Permanent library: PDFs committed to library/ are indexed now, into /app/seed.
+# On start, an empty data folder is filled from it (app/seed.py), so these documents
+# survive restarts even on hosts that wipe the disk, like Render's free plan.
+COPY library ./library
+RUN DATA_DIR=/app/seed python -m app.seed build library
 
 # Uploaded PDFs, the search index and logs live under DATA_DIR. Mount a persistent
 # volume there (Railway: mount path /data, which also sets RAILWAY_VOLUME_MOUNT_PATH).

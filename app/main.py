@@ -32,6 +32,7 @@ from app.config import (
     RETRIEVAL_RERANK,
 )
 from app.ingest import ingest_paths
+from app.seed import seed_if_empty
 
 security.check_startup_config()  # fail fast rather than start publicly without a password
 
@@ -46,16 +47,22 @@ if not _agent_log.handlers:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Load the reranker in the background at startup (~10s the first time) so the
-    # first user's search doesn't pay for it. Failure here is non-fatal: search
-    # will try again, and report the error, on first use.
-    if RETRIEVAL_RERANK:
-        def preload():
-            try:
+    # Fresh container on a host that wipes its disk: restore the permanent library first.
+    seed_if_empty()
+    # Load the models and the BM25 index in the background at startup (10-20s on a
+    # small CPU) so the first user's search doesn't pay for it. Failure here is
+    # non-fatal: search tries again, and reports the error, on first use.
+    def preload():
+        try:
+            for cfg in CHUNK_CONFIGS.values():
+                store.vector_search(cfg, "warm up", 1)  # loads the embedding model
+                retrieval.bm25_index(cfg)
+            if RETRIEVAL_RERANK:
                 retrieval._get_reranker()
-            except Exception:
-                logging.getLogger("uvicorn.error").exception("reranker preload failed")
-        threading.Thread(target=preload, daemon=True).start()
+        except Exception:
+            logging.getLogger("uvicorn.error").exception("model preload failed")
+
+    threading.Thread(target=preload, daemon=True).start()
     yield
 
 

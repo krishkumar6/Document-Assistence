@@ -35,94 +35,58 @@ reference.
 The first ingest downloads the local embedding model (~80 MB, `all-MiniLM-L6-v2`).
 Only `/ask` needs an LLM; ingestion and retrieval run fully offline.
 
-## Deploy free on Oracle Cloud
+## Deploy to Render (free)
 
-Oracle's **Always Free** tier gives you a small Linux server that costs $0 permanently.
-Everything runs, including the reranker, and uploaded PDFs are kept. `deploy/oracle/` has
-everything needed: Docker Compose, Caddy for automatic HTTPS, a server setup script and a
-one-command upload script for Windows. The whole stack was tested locally: HTTPS, the
-password, uploads and streaming through the proxy all worked.
+`render.yaml` is a Render Blueprint set up for the **free plan**. It was tested locally
+under the free plan's exact limits (512 MB RAM, 0.1 CPU, disk wiped on restart).
 
-**One-time setup (~30 min, in the Oracle web console):**
-
-1. **Sign up** at oracle.com/cloud/free. Pick your *home region* carefully (e.g. Mumbai or
-   Hyderabad in India); it can't be changed later. Sign-up usually asks for a card to verify
-   identity.
-2. **Create the server:** *Compute → Instances → Create instance*
-   - **Image:** Canonical **Ubuntu** (22.04 or 24.04).
-   - **Shape:** *Change shape → Ampere → VM.Standard.A1.Flex*, **1 OCPU, 2 GB memory**
-     (marked "Always Free-eligible"). Keep it this small on purpose: Oracle may stop Always Free
-     servers that stay under 20% CPU **and** network **and** memory for a week. The app plus the
-     OS use about half of 2 GB, so the server isn't idle. On a bigger free server it would be.
-   - **Networking:** create a new VCN with a public subnet, and assign a public IPv4 address.
-   - **SSH keys:** *Generate a key pair for me → Save private key*. Save it as
-     `C:\Users\<you>\.ssh\oracle.key`.
-   - If you get **"Out of host capacity"**: pick another availability domain, or retry later.
-     Free ARM servers are in demand.
-3. **Open ports 80 and 443:** instance page → subnet → *Security List → Add Ingress Rules*:
-   source `0.0.0.0/0`, protocol TCP, destination ports `80,443`. (`setup.sh` opens them in the
-   server's own firewall; this opens them in Oracle's network.)
-
-**Deploy (from this project folder on Windows):**
-
-4. Copy `deploy\oracle\env.example` to `deploy\oracle\.env` (git-ignored) and fill in
-   `GROQ_API_KEY` and `APP_PASSWORD`.
-5. Run, with your server's public IP:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\deploy\oracle\upload.ps1 -Ip <PUBLIC_IP>
-   ```
-   It sends the committed code and your `.env`, installs Docker, opens the firewall, builds the
-   image (the first build takes ~10 minutes on the small server) and starts everything.
-6. Open the address it prints, **`https://<ip-with-dashes>.sslip.io`**, and log in with any
-   username and your `APP_PASSWORD`. sslip.io is a free hostname that points at your IP, so
-   HTTPS works without buying a domain. If you own a domain, set `DOMAIN=` in the `.env` and point
-   an A record at the server.
-
-**Afterwards:**
-- **Update:** commit your changes, then re-run step 5. Uploaded PDFs are kept (they live in
-  `~/document-assistant/deploy/oracle/data` on the server).
-- **Check the server isn't "idle"** after a few days: instance page → *Metrics → Memory
-  utilization* should sit above 20%.
-- **Logs:** `ssh -i ~/.ssh/oracle.key ubuntu@<IP>`, then
-  `cd ~/document-assistant/deploy/oracle && sudo docker compose logs -f app`.
-- **Backups:** Oracle includes 5 free volume backups (*Block Storage → Boot volume → Backups*).
-
-## Deploy to Railway
-
-The repo includes a `Dockerfile` and `railway.json` (a `render.yaml` too, if you prefer Render).
-The image bakes in both models, so it starts without downloading anything.
-
-**Plan:** Hobby ($5/month, including $5 of usage). The app uses ~0.4 GB RAM (0.6 GB peak,
-measured) plus a little CPU per question, so expect roughly $5–7/month in total. The Free plan
-(0.5 GB RAM cap, $1 credit) is too small.
-
+**Steps:**
 1. Push this repo to GitHub (private is fine).
-2. In Railway: **New Project → Deploy from GitHub repo** and pick it. Railway finds the Dockerfile.
-3. **Add a volume** (service → right-click → *Attach volume*) with mount path **`/data`**.
-   Uploaded PDFs, the search index and logs live there; without it they vanish on every deploy.
-4. **Variables** (service → *Variables*):
-   | Variable | Value |
-   |---|---|
-   | `LLM_PROVIDER` | `groq` |
-   | `GROQ_API_KEY` | your key from console.groq.com |
-   | `APP_PASSWORD` | a password you share with your users |
-   | `PORT` | `8000` (only if Railway doesn't already set it) |
-5. **Settings → Networking → Generate Domain.** Open it and log in with any username and `APP_PASSWORD`.
-6. Upload your PDFs on the page. The library starts empty on a fresh deploy.
+2. In Render: **New → Blueprint**, connect GitHub, pick the repo. Render reads `render.yaml`.
+3. When it asks for the two secret values, enter:
+   - `GROQ_API_KEY`: your key from console.groq.com
+   - `APP_PASSWORD`: the password your users will type
+4. **Apply.** The first build takes ~10 minutes: it installs everything and builds the models
+   and your library's index into the image.
+5. Open `https://document-assistant-xxxx.onrender.com` and log in with any username and
+   your `APP_PASSWORD`.
+
+**How the free plan behaves (measured locally under the same limits):**
+
+| | |
+|---|---|
+| Memory | 144 MB of 512 MB (reranker off; hybrid vector + BM25 search still on) |
+| Wake from sleep | Render sleeps the app after 15 min idle; waking takes ~1 min, then ~40 s to start |
+| First question after waking | ~20–25 s (models finish loading) |
+| Later questions | ~4–7 s |
+| Accuracy | right page first 88% of the time on our eval (96% with the reranker, which needs a paid plan) |
+
+**Your documents on the free plan.** Render wipes the disk whenever the app restarts or sleeps, so:
+- **PDFs in the `library/` folder are permanent.** Put the documents you want always available
+  there, commit and push; Render rebuilds automatically. They're indexed at build time and
+  restored on every start in seconds.
+- **PDFs uploaded on the web page are temporary.** They're gone after the next restart.
+  Good for trying a file out, not for keeping it.
+- The repo ships with the three sample PDFs in `library/`. Replace them with your own.
+
+**Upgrading later** (faster, keeps uploads, reranker back on): in `render.yaml` set
+`plan: 1c-2g`, add the disk block shown in its comments, set `RETRIEVAL_RERANK: "true"`, and push.
+The app needs ~0.6 GB at peak with the reranker, more than Render's 512 MB plans.
 
 **Safety defaults when deployed:**
 - **Password:** the app **refuses to start** without `APP_PASSWORD`, unless you set
-  `ALLOW_PUBLIC=true` on purpose. It protects the page and API; only `/health` stays open
-  for the platform's health check.
-- **Upload limits:** 10 files per upload, 20 MB and 500 pages per file. Files must be real PDFs,
-  and a rejected batch saves nothing.
+  `ALLOW_PUBLIC=true` on purpose. It protects the page and API; only `/health` stays open for
+  Render's health check.
+- **Upload limits:** 10 files per upload, 10 MB (free plan) and 500 pages per file. Files must
+  be real PDFs, and a rejected batch saves nothing.
 - **Rate limit:** 20 questions per minute per visitor, to protect your free Groq quota.
-- **Secrets:** your Groq key lives only in Railway's variables. `.env` is git-ignored and
-  excluded from the image.
+- **Secrets:** your Groq key lives only in Render's environment settings. `.env` is git-ignored
+  and excluded from the image.
+- **Tuning for a small CPU:** `ORT_THREADS=1` runs the models on one thread. On 0.1 CPU this made
+  searches ~4x faster (12 s → 3 s), because the default one thread per visible core made the
+  threads fight over the tiny CPU share.
 
-Tested locally with Docker under a 1 GB memory cap: the password check, uploads, cited
-answers, streaming and the web page all worked, and uploaded PDFs survived a container
-restart on the volume.
+The same `Dockerfile` runs on any Docker host (`docker run -p 8000:8000 -e APP_PASSWORD=... -e GROQ_API_KEY=... -v data:/data`).
 
 ## Choosing the LLM (free options)
 
@@ -444,6 +408,8 @@ app/
   tools.py       search_docs, calculator, web_search + source labelling
   answer_cache.py  local /ask answer cache (TTL + LRU)
   security.py    password (HTTP Basic), per-IP rate limit, refuse-to-start-public guard
+  seed.py        permanent library: index library/ at build, restore into an empty data folder at start
+library/         PDFs that are always available when deployed (built into the image)
   static/        the web page served at /
   main.py        FastAPI app
 eval/            labelled questions + comparison harness
@@ -474,6 +440,8 @@ All of these can go in `.env` (see `.env.example`).
 | `APP_PASSWORD` / `ALLOW_PUBLIC` | unset / `false`. On a hosting platform, a password is required unless `ALLOW_PUBLIC=true` |
 | `MAX_UPLOAD_MB` / `MAX_FILES_PER_UPLOAD` / `MAX_PDF_PAGES` | `20` / `10` / `500` |
 | `RATE_LIMIT_PER_MINUTE` | `20` questions per client IP (0 disables) |
+| `ORT_THREADS` | `0` (ONNX default). Set `1` on tiny CPU shares like Render free |
+| `SEED_DIR` | `seed` locally, `/app/seed` in Docker: prebuilt index of `library/`, copied into an empty data folder at start |
 
 Free tiers are rate-limited: 429s are retried with backoff, and the eval waits
 out the per-minute window. With Claude, `/ask` enables the API's server-side

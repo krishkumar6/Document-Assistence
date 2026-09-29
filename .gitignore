@@ -6,4 +6,5 @@ data/
 eval/results*.json
 logs/
 models/
+seed/
 .env
