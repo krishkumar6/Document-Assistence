@@ -21,6 +21,10 @@ if (-not (Test-Path $envFile)) { throw "Create deploy\oracle\.env first (copy de
 if (-not (Test-Path $Key)) { throw "SSH key not found: $Key (the private key you downloaded when creating the Oracle instance)." }
 if (git -C $root status --porcelain) { Write-Warning "You have uncommitted changes; only committed files are deployed." }
 
+# Windows OpenSSH rejects private keys other users can read ("UNPROTECTED PRIVATE KEY FILE").
+# Restrict the downloaded key to the current user.
+icacls $Key /inheritance:r /grant:r "$($env:USERNAME):R" | Out-Null
+
 $tar = Join-Path $env:TEMP "document-assistant.tar"
 git -C $root archive --format=tar -o $tar HEAD
 if ($LASTEXITCODE -ne 0) { throw "git archive failed" }

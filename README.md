@@ -35,6 +35,58 @@ reference.
 The first ingest downloads the local embedding model (~80 MB, `all-MiniLM-L6-v2`).
 Only `/ask` needs an LLM; ingestion and retrieval run fully offline.
 
+## Deploy free on Oracle Cloud
+
+Oracle's **Always Free** tier gives you a small Linux server that costs $0 permanently.
+Everything runs, including the reranker, and uploaded PDFs are kept. `deploy/oracle/` has
+everything needed: Docker Compose, Caddy for automatic HTTPS, a server setup script and a
+one-command upload script for Windows. The whole stack was tested locally: HTTPS, the
+password, uploads and streaming through the proxy all worked.
+
+**One-time setup (~30 min, in the Oracle web console):**
+
+1. **Sign up** at oracle.com/cloud/free. Pick your *home region* carefully (e.g. Mumbai or
+   Hyderabad in India); it can't be changed later. Sign-up usually asks for a card to verify
+   identity.
+2. **Create the server:** *Compute → Instances → Create instance*
+   - **Image:** Canonical **Ubuntu** (22.04 or 24.04).
+   - **Shape:** *Change shape → Ampere → VM.Standard.A1.Flex*, **1 OCPU, 2 GB memory**
+     (marked "Always Free-eligible"). Keep it this small on purpose: Oracle may stop Always Free
+     servers that stay under 20% CPU **and** network **and** memory for a week. The app plus the
+     OS use about half of 2 GB, so the server isn't idle. On a bigger free server it would be.
+   - **Networking:** create a new VCN with a public subnet, and assign a public IPv4 address.
+   - **SSH keys:** *Generate a key pair for me → Save private key*. Save it as
+     `C:\Users\<you>\.ssh\oracle.key`.
+   - If you get **"Out of host capacity"**: pick another availability domain, or retry later.
+     Free ARM servers are in demand.
+3. **Open ports 80 and 443:** instance page → subnet → *Security List → Add Ingress Rules*:
+   source `0.0.0.0/0`, protocol TCP, destination ports `80,443`. (`setup.sh` opens them in the
+   server's own firewall; this opens them in Oracle's network.)
+
+**Deploy (from this project folder on Windows):**
+
+4. Copy `deploy\oracle\env.example` to `deploy\oracle\.env` (git-ignored) and fill in
+   `GROQ_API_KEY` and `APP_PASSWORD`.
+5. Run, with your server's public IP:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\deploy\oracle\upload.ps1 -Ip <PUBLIC_IP>
+   ```
+   It sends the committed code and your `.env`, installs Docker, opens the firewall, builds the
+   image (the first build takes ~10 minutes on the small server) and starts everything.
+6. Open the address it prints, **`https://<ip-with-dashes>.sslip.io`**, and log in with any
+   username and your `APP_PASSWORD`. sslip.io is a free hostname that points at your IP, so
+   HTTPS works without buying a domain. If you own a domain, set `DOMAIN=` in the `.env` and point
+   an A record at the server.
+
+**Afterwards:**
+- **Update:** commit your changes, then re-run step 5. Uploaded PDFs are kept (they live in
+  `~/document-assistant/deploy/oracle/data` on the server).
+- **Check the server isn't "idle"** after a few days: instance page → *Metrics → Memory
+  utilization* should sit above 20%.
+- **Logs:** `ssh -i ~/.ssh/oracle.key ubuntu@<IP>`, then
+  `cd ~/document-assistant/deploy/oracle && sudo docker compose logs -f app`.
+- **Backups:** Oracle includes 5 free volume backups (*Block Storage → Boot volume → Backups*).
+
 ## Deploy to Railway
 
 The repo includes a `Dockerfile` and `railway.json` (a `render.yaml` too, if you prefer Render).
